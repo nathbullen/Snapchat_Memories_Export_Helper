@@ -14,7 +14,7 @@ Snapchat Export Helper is a tool designed to assist users in organizing and fixi
 2. Ensure that you select **only your memories** for export.
 3. Once the export is ready, download the provided ZIP file and extract its contents.
 
-![Export Memories Screenshot](./images/export_screenshot.png)
+![Export Memories Screenshot](./images/image.png)
 
 ### Step 2: Prepare Your Files
 1. Locate the `index.html` file in the extracted export folder.
