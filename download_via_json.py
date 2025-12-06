@@ -56,14 +56,28 @@ def set_image_exif_metadata(file_path, date_obj, latitude, longitude):
         return
     
     try:
+        # Open image to verify it's valid
+        try:
+            img = Image.open(file_path)
+            img_format = img.format
+            img.close()
+        except Exception as img_error:
+            print(f"  Skipping EXIF metadata (invalid/corrupted image file)")
+            return
+        
+        # Only process JPEG files
+        if img_format not in ['JPEG', 'JPG']:
+            print(f"  Skipping EXIF metadata (format: {img_format}, only JPEG supported)")
+            return
+        
         # Load existing EXIF data or create new
         try:
             exif_dict = piexif.load(file_path)
         except:
             exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
         
-        # Set date/time
-        date_str = date_obj.strftime("%Y:%m:%d %H:%M:%S")
+        # Set date/time (must be bytes)
+        date_str = date_obj.strftime("%Y:%m:%d %H:%M:%S").encode('ascii')
         exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = date_str
         exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = date_str
         exif_dict["0th"][piexif.ImageIFD.DateTime] = date_str
@@ -74,13 +88,17 @@ def set_image_exif_metadata(file_path, date_obj, latitude, longitude):
             lon_dms = decimal_to_dms(longitude)
             
             exif_dict["GPS"][piexif.GPSIFD.GPSLatitude] = lat_dms
-            exif_dict["GPS"][piexif.GPSIFD.GPSLatitudeRef] = "N" if latitude >= 0 else "S"
+            exif_dict["GPS"][piexif.GPSIFD.GPSLatitudeRef] = b"N" if latitude >= 0 else b"S"
             exif_dict["GPS"][piexif.GPSIFD.GPSLongitude] = lon_dms
-            exif_dict["GPS"][piexif.GPSIFD.GPSLongitudeRef] = "E" if longitude >= 0 else "W"
+            exif_dict["GPS"][piexif.GPSIFD.GPSLongitudeRef] = b"E" if longitude >= 0 else b"W"
         
-        # Save EXIF data
+        # Save EXIF data using PIL to avoid corruption
         exif_bytes = piexif.dump(exif_dict)
-        piexif.insert(exif_bytes, file_path)
+        
+        # Re-save the image with EXIF data
+        img = Image.open(file_path)
+        img.save(file_path, "JPEG", exif=exif_bytes, quality=95)
+        img.close()
         
         print(f"  ✓ Set EXIF metadata (date + GPS)")
     except Exception as e:
@@ -165,12 +183,35 @@ def set_file_timestamps(file_path, date_obj):
 def download_media(url, output_path):
     """Download media file from URL."""
     try:
-        response = requests.get(url, stream=True)
+        response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
         
+        # Check if we got actual media content
+        content_type = response.headers.get('content-type', '').lower()
+        
+        # Download the file
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+        
+        # Verify the file is valid by checking magic bytes
+        with open(output_path, 'rb') as f:
+            magic = f.read(12)
+            
+        # Check for common image/video formats
+        is_jpeg = magic[:3] == b'\xff\xd8\xff'
+        is_png = magic[:8] == b'\x89PNG\r\n\x1a\n'
+        is_mp4 = b'ftyp' in magic or b'moov' in magic
+        is_html = magic[:5].lower() == b'<!doc' or magic[:5].lower() == b'<html'
+        
+        if is_html:
+            print(f"  ⚠ Downloaded HTML instead of media (likely expired/invalid URL)")
+            os.remove(output_path)
+            return False
+        
+        if not (is_jpeg or is_png or is_mp4):
+            print(f"  ⚠ Downloaded file has unexpected format (magic: {magic[:4].hex()})")
+            # Don't delete - might be valid but unknown format
         
         return True
     except Exception as e:
@@ -257,7 +298,7 @@ def main():
     json_file = input("Enter JSON file path: ").strip()
     
     if not json_file:
-        json_file = "memories_json/laura.json"
+        json_file = "memories_json/ethan.json"
     
     if not os.path.exists(json_file):
         print(f"Error: File '{json_file}' not found!")
