@@ -4,6 +4,8 @@ import requests
 from datetime import datetime
 from pathlib import Path
 import platform
+import subprocess
+import shutil
 
 # For setting file timestamps
 import time
@@ -83,6 +85,72 @@ def set_image_exif_metadata(file_path, date_obj, latitude, longitude):
         print(f"  ✓ Set EXIF metadata (date + GPS)")
     except Exception as e:
         print(f"  Warning: Could not set EXIF metadata: {e}")
+
+def check_ffmpeg():
+    """Check if ffmpeg is available on the system."""
+    return shutil.which('ffmpeg') is not None
+
+def set_video_metadata(file_path, date_obj, latitude, longitude):
+    """Set metadata for video files using ffmpeg."""
+    if not check_ffmpeg():
+        print(f"  Skipping video metadata (ffmpeg not found)")
+        return False
+    
+    try:
+        # Create a temporary output file
+        temp_path = str(file_path) + ".temp.mp4"
+        
+        # Prepare metadata arguments
+        metadata_args = [
+            'ffmpeg',
+            '-i', str(file_path),
+            '-c', 'copy',  # Copy streams without re-encoding
+            '-map_metadata', '0',  # Copy existing metadata
+        ]
+        
+        # Add creation time metadata
+        creation_time = date_obj.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+        metadata_args.extend(['-metadata', f'creation_time={creation_time}'])
+        metadata_args.extend(['-metadata', f'date={date_obj.strftime("%Y")}'])
+        
+        # Add GPS location metadata if available
+        if latitude is not None and longitude is not None:
+            # ISO 6709 format for location
+            location_str = f"{latitude:+.6f}{longitude:+.6f}/"
+            metadata_args.extend(['-metadata', f'location={location_str}'])
+            metadata_args.extend(['-metadata', f'location-eng={location_str}'])
+            metadata_args.extend(['-metadata', f'com.apple.quicktime.location.ISO6709={location_str}'])
+        
+        # Output file
+        metadata_args.extend(['-y', temp_path])  # -y to overwrite without asking
+        
+        # Run ffmpeg
+        result = subprocess.run(
+            metadata_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0
+        )
+        
+        if result.returncode == 0:
+            # Replace original file with the one that has metadata
+            os.replace(temp_path, file_path)
+            print(f"  ✓ Set video metadata (date + GPS) with ffmpeg")
+            return True
+        else:
+            print(f"  Warning: ffmpeg failed: {result.stderr.decode()[:100]}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return False
+            
+    except Exception as e:
+        print(f"  Warning: Could not set video metadata: {e}")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        return False
 
 def set_file_timestamps(file_path, date_obj):
     """Set file modification and access times."""
@@ -167,14 +235,15 @@ def process_json_file(json_path, output_dir="downloads"):
         if download_media(download_url, str(file_path)):
             print("✓ Downloaded")
             
-            # Set file timestamps
-            set_file_timestamps(str(file_path), date_obj)
-            
             # Set EXIF metadata for images
             if media_type == "Image" and extension.lower() in ['.jpg', '.jpeg']:
                 set_image_exif_metadata(str(file_path), date_obj, latitude, longitude)
             elif media_type == "Video":
-                print(f"  Note: Video EXIF requires additional tools (ffmpeg)")
+                # Set video metadata with ffmpeg
+                set_video_metadata(str(file_path), date_obj, latitude, longitude)
+            
+            # Set file timestamps (do this last to ensure file times reflect original date)
+            set_file_timestamps(str(file_path), date_obj)
         
         print()  # Empty line between items
     
@@ -188,7 +257,7 @@ def main():
     json_file = input("Enter JSON file path: ").strip()
     
     if not json_file:
-        json_file = "memories_json/YOUR_JSON_FILE_HERE.json"
+        json_file = "memories_json/laura.json"
     
     if not os.path.exists(json_file):
         print(f"Error: File '{json_file}' not found!")
