@@ -1,0 +1,18 @@
+{
+    "Saved Media": [
+        {
+            "Date": "2023-01-01 12:00:00 UTC",
+            "Media Type": "Image",
+            "Location": "Latitude, Longitude: 40.7128, -74.0060",
+            "Download Link": "https://app.snapchat.com/dmd/memories?uid=placeholder-uid&sid=placeholder-sid&mid=placeholder-mid&ts=1234567890&proxy=true&sig=placeholder-sig",
+            "Media Download Url": "https://us-east1-aws.api.snapchat.com/dmd/mm?uid=placeholder-uid&sid=placeholder-sid&mid=placeholder-mid&ts=1234567890&sig=placeholder-sig"
+        },
+        {
+            "Date": "2023-02-15 08:30:45 UTC",
+            "Media Type": "Video",
+            "Location": "Latitude, Longitude: 34.0522, -118.2437",
+            "Download Link": "https://app.snapchat.com/dmd/memories?uid=random-uid&sid=random-sid&mid=random-mid&ts=9876543210&proxy=true&sig=random-sig",
+            "Media Download Url": "https://us-east1-aws.api.snapchat.com/dmd/mm?uid=random-uid&sid=random-sid&mid=random-mid&ts=9876543210&sig=random-sig"
+        }
+    ]
+}

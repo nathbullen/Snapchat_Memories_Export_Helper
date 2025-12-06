@@ -188,7 +188,7 @@ def main():
     json_file = input("Enter JSON file path: ").strip()
     
     if not json_file:
-        json_file = "memories_json/laura.json"
+        json_file = "memories_json/YOUR_JSON_FILE_HERE.json"
     
     if not os.path.exists(json_file):
         print(f"Error: File '{json_file}' not found!")
