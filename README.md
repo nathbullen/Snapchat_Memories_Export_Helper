@@ -182,7 +182,44 @@ If downloads fail:
 
 ### Video Metadata
 
-Video EXIF metadata embedding requires additional tools like `ffmpeg`. Currently, the script only sets file timestamps for videos. To add metadata to videos, you would need to use external tools.
+Video EXIF metadata embedding requires additional tools like `ffmpeg`. The script will attempt to use `ffmpeg` (if available in your system `PATH`) to write `creation_time` and certain location tags into MP4 files. If `ffmpeg` is not installed or not found, the script will skip embedding video metadata and only set file modification/access timestamps.
+
+#### FFmpeg Requirement
+
+- **What it's for:** `ffmpeg` is used to add `creation_time` and location metadata into MP4 containers so video files preserve original date and GPS information.
+- **Behavior in the script:** If `ffmpeg` is missing, the script prints `Skipping video metadata (ffmpeg not found)` and continues — only file timestamps will be set. If `ffmpeg` is available, the script runs `ffmpeg` to copy streams and attach metadata.
+- **Check installation:** Run `ffmpeg -version` in your shell to verify that `ffmpeg` is installed and available on your `PATH`.
+- **Install `ffmpeg` (examples):**
+
+  - Windows (Winget):
+
+    ```
+    winget install ffmpeg
+    ```
+
+  - Windows (Chocolatey):
+
+    ```
+    choco install ffmpeg -y
+    ```
+
+  - macOS (Homebrew):
+
+    ```
+    brew install ffmpeg
+    ```
+
+  - Debian/Ubuntu:
+
+    ```
+    sudo apt update && sudo apt install -y ffmpeg
+    ```
+
+- **Notes:**
+  - Ensure the `ffmpeg` executable is on your `PATH` (open a new terminal after install if necessary).
+  - After installing `ffmpeg`, re-run the script to enable video metadata embedding.
+
+If you'd prefer not to install `ffmpeg`, the script still preserves timestamps and filenames but will not embed video EXIF/creation metadata.
 
 ## Tips & Best Practices
 
