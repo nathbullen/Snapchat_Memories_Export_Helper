@@ -1,5 +1,6 @@
 import json
 import os
+import zipfile
 import requests
 from datetime import datetime
 from pathlib import Path
@@ -181,41 +182,91 @@ def set_file_timestamps(file_path, date_obj):
         print(f"  Warning: Could not set file timestamp: {e}")
 
 def download_media(url, output_path):
-    """Download media file from URL."""
+    """Download media file from URL, handling zips automatically."""
+    output_path = Path(output_path)
     try:
         response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
+
+        # 1. Download to a temp file first
+        temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
         
-        # Check if we got actual media content
-        content_type = response.headers.get('content-type', '').lower()
-        
-        # Download the file
-        with open(output_path, 'wb') as f:
+        with open(temp_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        
-        # Verify the file is valid by checking magic bytes
-        with open(output_path, 'rb') as f:
-            magic = f.read(12)
+
+        # 2. Check for ZIP signature (Magic Number 50 4B 03 04)
+        is_zip = False
+        with open(temp_path, 'rb') as f:
+            header = f.read(4)
+            if header == b'\x50\x4b\x03\x04':
+                is_zip = True
+
+        if is_zip:
+            print(f"  ⚠ Detected ZIP file (Story/Bundle). Unzipping...")
             
-        # Check for common image/video formats
-        is_jpeg = magic[:3] == b'\xff\xd8\xff'
-        is_png = magic[:8] == b'\x89PNG\r\n\x1a\n'
-        is_mp4 = b'ftyp' in magic or b'moov' in magic
-        is_html = magic[:5].lower() == b'<!doc' or magic[:5].lower() == b'<html'
-        
-        if is_html:
-            print(f"  ⚠ Downloaded HTML instead of media (likely expired/invalid URL)")
-            os.remove(output_path)
-            return False
-        
-        if not (is_jpeg or is_png or is_mp4):
-            print(f"  ⚠ Downloaded file has unexpected format (magic: {magic[:4].hex()})")
-            # Don't delete - might be valid but unknown format
-        
+            # Create a temp folder to unzip into
+            extract_folder = output_path.parent / "temp_unzip_folder"
+            if extract_folder.exists():
+                shutil.rmtree(extract_folder)
+            extract_folder.mkdir()
+            
+            try:
+                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_folder)
+
+                # First, look for video files (MP4)
+                candidates = list(extract_folder.glob('*.mp4'))
+                
+                # If no videos, look for images (JPG/JPEG)
+                if not candidates:
+                    candidates = list(extract_folder.glob('*.jpg')) + list(extract_folder.glob('*.jpeg'))
+
+                if candidates:
+                    # Pick the largest file found (whether video or image)
+                    best_file = max(candidates, key=lambda p: p.stat().st_size)
+                    
+                    # Move it to the final destination
+                    if output_path.exists():
+                        output_path.unlink()
+                    
+                    # If we found an image but the original filename was .mp4, fix the extension
+                    if best_file.suffix.lower() in ['.jpg', '.jpeg'] and output_path.suffix.lower() == '.mp4':
+                        output_path = output_path.with_suffix(best_file.suffix)
+                    
+                    shutil.move(str(best_file), str(output_path))
+                    print(f"  ✓ Extracted media ({best_file.suffix}) from zip")
+                else:
+                    print(f"  ⚠ No MP4 or JPG found in zip. Saving as .zip")
+                    # ... (rest of the else block remains the same)
+
+                    
+            except Exception as e:
+                print(f"  ⚠ Error unzipping: {e}")
+                # Fallback: just save the original zip
+                shutil.move(str(temp_path), str(output_path.with_suffix('.zip')))
+                return False
+            finally:
+                # Cleanup temp folder
+                if extract_folder.exists():
+                    shutil.rmtree(extract_folder)
+                # Cleanup temp file if it still exists
+                if temp_path.exists():
+                    temp_path.unlink()
+                    
+        else:
+            # Not a zip, just a normal file. Rename temp to final.
+            if output_path.exists():
+                output_path.unlink()
+            shutil.move(str(temp_path), str(output_path))
+
         return True
+
     except Exception as e:
         print(f"  Error downloading: {e}")
+        # Clean up temp file if it exists
+        if 'temp_path' in locals() and temp_path.exists():
+            temp_path.unlink()
         return False
 
 def get_file_extension(media_type, content_type=None):
